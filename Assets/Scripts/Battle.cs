@@ -1,6 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
 using Units;
 using System;
 
@@ -14,6 +11,7 @@ namespace Battle
         Move o_move;
         readonly bool playerHasInit;
         bool movesUpdatedThisRound;
+        GameManager manager;
 
         // Status effect flags. Item1 is the unit with advantage, Item2 is the other unit. 
         public (bool, bool) BurnFlag { get; set; }
@@ -37,8 +35,8 @@ namespace Battle
         {
             if(!movesUpdatedThisRound) { throw new NotImplementedException(); } // idk lol replace with a better check
 
-            Turn a_turn = new(ref unitWithInitiative, ref other, a_move, true);
-            Turn o_turn = new(ref other, ref unitWithInitiative, o_move, false);
+            Turn a_turn = new(ref unitWithInitiative, ref other, a_move, true, ref manager);
+            Turn o_turn = new(ref other, ref unitWithInitiative, o_move, false, ref manager);
             movesUpdatedThisRound = false;
             return a_turn.Act(this) || o_turn.Act(this); // Will short circuit return true if someone is knocked out during a_turn, instantly ending the battle.
         }
@@ -49,14 +47,19 @@ namespace Battle
             if(playerHasInit)
             {
                 a_move = unitWithInitiative.Moves[p_move - 1];
-                o_move = other.Moves[e_move - 1];
+                o_move = other.Moves[e_move]; // Opponent moves are selected by their real index programmatically. 
             } else
             {
                 o_move = unitWithInitiative.Moves[p_move - 1];
-                a_move = other.Moves[e_move - 1];
+                a_move = other.Moves[e_move];
             }
 
             movesUpdatedThisRound = true;
+        }
+
+        public void SetGameManager(GameManager gm)
+        {
+            this.manager = gm;
         }
     }
 
@@ -67,13 +70,15 @@ namespace Battle
         readonly Move move;
         bool moveHits = false;
         readonly bool attackerHasInit;
+        GameManager manager;
 
-        public Turn(ref Unit _attacker, ref Unit defender, Move _move, bool _attackerHasInit)
+        public Turn(ref Unit _attacker, ref Unit defender, Move _move, bool _attackerHasInit, ref GameManager _manager)
         {
             this.attacker = _attacker;
             this.defender = defender;
             this.move = _move;
             attackerHasInit = _attackerHasInit;
+            this.manager = _manager;
         }
 
         // True means there was a knockout. False means the battle continues. 
@@ -107,10 +112,10 @@ namespace Battle
                     // On hit logic
                     //
                     if (attackerHasInit ? battle.AttackAmpFlag.Item1 : battle.AttackAmpFlag.Item2)
-                    { attacker_attack_mod += 0.55f; } // Attacker has attack amp.
+                    { attacker_attack_mod += 0.5f; } // Attacker has attack amp.
 
                     if (attackerHasInit ? battle.AttackDecayFlag.Item1 : battle.AttackDecayFlag.Item2)
-                    { attacker_attack_mod -= 0.55f; } // Attacker has attack decay.
+                    { attacker_attack_mod -= 0.5f; } // Attacker has attack decay.
 
                     if (attackerHasInit ? battle.DefenseAmpFlag.Item2 : battle.DefenseAmpFlag.Item1)
                     { defender_defense_mod += 0.5f; } // Defender has defense amp.
@@ -132,8 +137,7 @@ namespace Battle
                     finalDamage *= -1;
 
                     defender.ModHitPoints(finalDamage);
-                    // Play damage taking animation.
-                    // Switch on the type of the move to get a generic damage animation.
+                    manager.Animation_HitUnit(move.Type, attackerHasInit); // Init is player
 
                     //
                     // End on hit logic
@@ -146,41 +150,41 @@ namespace Battle
                         case 12: // Burn
                             battle.BurnFlag = attackerHasInit ? 
                                 (battle.BurnFlag.Item1, true) : (true, battle.BurnFlag.Item2);
-                            // Play opponent burned animation.
+                            manager.Animation_Burn(!attackerHasInit);
                             break;
                         case 13: // Amp Attack
                             battle.AttackAmpFlag = attackerHasInit ? 
                                 (true, battle.AttackAmpFlag.Item2) : (battle.AttackAmpFlag.Item1, true);
-                            // Play self buff animation.
+                            manager.Animation_Buff(attackerHasInit);
                             break;
                         case 14: // Amp Defense
                             battle.DefenseAmpFlag = attackerHasInit ? 
                                 (true, battle.DefenseAmpFlag.Item2) : (battle.DefenseAmpFlag.Item1, true);
-                            // Play self buff animation.
+                            manager.Animation_Buff(attackerHasInit);
                             break;
                         case 15: // Amp Accuracy
                             battle.AccuracyAmpFlag = attackerHasInit ? 
                                 (true, battle.AccuracyAmpFlag.Item2) : (battle.AccuracyAmpFlag.Item1, true);
-                            // Play self buff animation.
+                            manager.Animation_Buff(attackerHasInit);
                             break;
                         case 16: // Decay Attack 
                             battle.AttackDecayFlag = attackerHasInit ? 
                                 (battle.AttackDecayFlag.Item1, true) : (true, battle.AttackDecayFlag.Item2);
-                            // Play opponent debuff animation.
+                            manager.Animation_Debuff(!attackerHasInit);
                             break;
                         case 17: // Decay Defense
                             battle.DefenseDecayFlag = attackerHasInit ? 
                                 (battle.DefenseDecayFlag.Item1, true) : (true, battle.DefenseDecayFlag.Item2);
-                            // Play opponent debuff animation.
+                            manager.Animation_Debuff(!attackerHasInit);
                             break;
                         case 18: // Decay Accuracy
                             battle.AccuracyDecayFlag = attackerHasInit ? 
                                 (battle.AccuracyDecayFlag.Item1, true) : (true, battle.AccuracyDecayFlag.Item2);
-                            // Play opponent debuff animation.
+                            manager.Animation_Debuff(!attackerHasInit);
                             break;
                         case 19: // Restore
                             attacker.ModHitPoints(0.5f); // Restores 50% hp
-                            // Play hp restoration animation.
+                            manager.Animation_Restore(attackerHasInit);
                             break;
                     }
                 }
@@ -192,7 +196,7 @@ namespace Battle
             if (attackerHasInit ? battle.BurnFlag.Item1 : battle.BurnFlag.Item2)
             {
                 // Burn damage against attacker at the end of their turn. Occurs whether or not the move hit. 
-                attacker.ModHitPoints(0.1f); // Deals 10% max hp per turn. 
+                attacker.ModHitPoints(-0.1f); // Deals 10% max hp per turn. 
                 // Play animation for burn damage. 
             }
 

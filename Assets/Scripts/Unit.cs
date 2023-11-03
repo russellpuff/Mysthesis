@@ -56,6 +56,11 @@ namespace Units
             int final = (int)(maxHitPoints * _percent);
             ModHitPoints(final);
         }
+
+        public void SwapMove(int indexOfMoveToReplace, int idOfMoveToAdd)
+        {
+            this.moves[indexOfMoveToReplace] = new(idOfMoveToAdd);
+        }
     }
 
     public class Move
@@ -76,7 +81,7 @@ namespace Units
 
         public Move(int _id)
         {
-            Move toCopy = AllMoves.allMoves.FirstOrDefault(x => x.moveID ==  _id) ?? new Move(1); // Safety net since this construction style isn't airtight.
+            Move toCopy = Utility.allMoves.FirstOrDefault(x => x.moveID ==  _id) ?? new Move(1); // Safety net since this construction style isn't airtight.
             this.moveID = toCopy.moveID;
             this.name = toCopy.name;
             this.power = toCopy.power;
@@ -87,8 +92,8 @@ namespace Units
 
         public Move(int _id, string _name, int _power, int _acc, bool _isAtk, Type _type)
         {
-            this.moveID= _id;
-            this.name= _name;
+            this.moveID = _id;
+            this.name = _name;
             this.power = _power;
             this.accuracy = _acc;
             this.isAttack = _isAtk;
@@ -113,7 +118,7 @@ namespace Units
         NoType // Unused debug placeholder.
     }
 
-    public static class AllMoves
+    public static class Utility
     {
         public readonly static List<Move> allMoves = new()
         { // Basic attacking moves.
@@ -128,7 +133,7 @@ namespace Units
             new Move(9, "Death Toll", 75, 100, true, Type.Sonus),
             new Move(10, "Earthquake", 75, 100, true, Type.Terra),
             //new Move(11, "Hurricane", 75, 100, true, Type.Ventus),
-            new Move(12, "Toxic Bomb", 75, 100, true, Type.Virus),
+            new Move(11, "Toxic Bomb", 75, 100, true, Type.Virus),
 
             // Basic status moves. All of these are NoType because I don't have a purpose for typing them yet. 
             new Move(12, "Burn", 0, 75, false, Type.NoType), // Burn status effect (DoT)
@@ -140,12 +145,35 @@ namespace Units
             new Move(18, "Decay Accuracy", 0, 75, false, Type.NoType), // Decrease opponent accuracy.
             new Move(19, "Restore", 0, 100, false, Type.NoType), // Heal self by half.
         };
+
+        public static Unit GenerateRandomUnit()
+        {
+            System.Random rng = new();
+            int hp = rng.Next(125, 226);
+            int atk = rng.Next(100, 201);
+            int def = rng.Next(110, 211);
+            int type = rng.Next(11);
+            List<int> moves = new();
+            while (moves.Count < 4)
+            {
+                int randomMove = rng.Next(1, 19);
+                if (!moves.Contains(randomMove)) { moves.Add(randomMove); }
+            }
+
+            if (moves.TrueForAll(x => x >= 12)) // No attacking moves were generated
+            {
+                int moveToReplace = rng.Next(4);
+                moves[moveToReplace] = rng.Next(1, 12); // Randomly replace a move with an attacking move. 
+            }
+
+            return new("", hp, atk, def, 0, (Units.Type)type, moves[0], moves[1], moves[2], moves[3]);
+        }
     }
 
     public static class TypeConverter
     {
         // Dictionary for type matchups. 
-        static Dictionary<(Type, Type), float> damageModifiers = new()
+        static readonly Dictionary<(Type, Type), float> damageModifiers = new()
         { // First type is attacker, second type is defender. 
             // Attacking types will always be strong against 1 type and weak against 1 type (weak against the type strong against itself)
             // For now.
