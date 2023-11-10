@@ -166,7 +166,7 @@ namespace Units
                 moves[moveToReplace] = rng.Next(1, 12); // Randomly replace a move with an attacking move. 
             }
 
-            return new("", hp, atk, def, 0, (Units.Type)type, moves[0], moves[1], moves[2], moves[3]);
+            return new("", hp, atk, def, 0, (Type)type, moves[0], moves[1], moves[2], moves[3]);
         }
     }
 
@@ -199,7 +199,7 @@ namespace Units
             { (Type.Terra, Type.Frigid), 0.5f },
             { (Type.Virus, Type.Anima), 2.0f },
             { (Type.Virus, Type.Ferrum), 0.5f }
-            };
+        };
 
         public static string TypeToString(Type type)
         {

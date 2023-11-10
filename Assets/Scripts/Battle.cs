@@ -1,5 +1,9 @@
 using Units;
 using System;
+using System.Diagnostics;
+using UnityEngine;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Battle
 {
@@ -34,7 +38,7 @@ namespace Battle
         public bool Round()
         {
             if(!movesUpdatedThisRound) { throw new NotImplementedException(); } // idk lol replace with a better check
-
+            UnityEngine.Debug.Log("Round started.");
             Turn a_turn = new(ref unitWithInitiative, ref other, a_move, true, ref manager);
             Turn o_turn = new(ref other, ref unitWithInitiative, o_move, false, ref manager);
             movesUpdatedThisRound = false;
@@ -46,11 +50,11 @@ namespace Battle
         {
             if(playerHasInit)
             {
-                a_move = unitWithInitiative.Moves[p_move - 1];
+                a_move = unitWithInitiative.Moves[p_move];
                 o_move = other.Moves[e_move]; // Opponent moves are selected by their real index programmatically. 
             } else
             {
-                o_move = unitWithInitiative.Moves[p_move - 1];
+                o_move = unitWithInitiative.Moves[p_move];
                 a_move = other.Moves[e_move];
             }
 
@@ -70,7 +74,7 @@ namespace Battle
         readonly Move move;
         bool moveHits = false;
         readonly bool attackerHasInit;
-        GameManager manager;
+        readonly GameManager manager;
 
         public Turn(ref Unit _attacker, ref Unit defender, Move _move, bool _attackerHasInit, ref GameManager _manager)
         {
@@ -103,8 +107,9 @@ namespace Battle
             //
             // End roll to hit logic
             //
+            UnityEngine.Debug.Log($"Calculated hit: {moveHits}");
 
-            if(moveHits)
+            if (moveHits)
             {
                 if (move.IsAttack) // Attacking move.
                 {
@@ -136,8 +141,11 @@ namespace Battle
                     if (finalDamage <= 0) { finalDamage = 0; }
                     finalDamage *= -1;
 
+                    UnityEngine.Debug.Log($"Calculated damage: {finalDamage}");
+
                     defender.ModHitPoints(finalDamage);
                     manager.Animation_HitUnit(move.Type, attackerHasInit); // Init is player
+                    UnityEngine.Debug.Log("Got past move timer.");
 
                     //
                     // End on hit logic
