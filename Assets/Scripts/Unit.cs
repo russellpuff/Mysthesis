@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace Units
@@ -115,7 +116,11 @@ namespace Units
         Terra,
         // Ventus,
         Virus,
-        NoType // Unused debug placeholder.
+        Buff,
+        Debuff,
+        Burn,
+        Heal,
+        NoType
     }
 
     public static class Utility
@@ -135,15 +140,15 @@ namespace Units
             //new Move(11, "Hurricane", 75, 100, true, Type.Ventus),
             new Move(11, "Toxic Bomb", 75, 100, true, Type.Virus),
 
-            // Basic status moves. All of these are NoType because I don't have a purpose for typing them yet. 
-            new Move(12, "Burn", 0, 75, false, Type.NoType), // Burn status effect (DoT)
-            new Move(13, "Amp Attack", 0, 100, false, Type.NoType), // Increase self attack
-            new Move(14, "Amp Defense", 0, 100, false, Type.NoType), // Increase self defense
-            new Move(15, "Amp Accuracy", 0, 100, false, Type.NoType), // Increase self accuracy
-            new Move(16, "Decay Attack", 0, 100, false, Type.NoType), // Decrease opponent attack
-            new Move(17, "Decay Defense", 0, 100, false, Type.NoType), // Decrease opponent defense
-            new Move(18, "Decay Accuracy", 0, 75, false, Type.NoType), // Decrease opponent accuracy.
-            new Move(19, "Restore", 0, 100, false, Type.NoType), // Heal self by half.
+            // Basic status moves.  
+            new Move(12, "Burn", 0, 75, false, Type.Burn), // Burn status effect (DoT)
+            new Move(13, "Amp Attack", 0, 100, false, Type.Buff), // Increase self attack
+            new Move(14, "Amp Defense", 0, 100, false, Type.Buff), // Increase self defense
+            new Move(15, "Amp Accuracy", 0, 100, false, Type.Buff), // Increase self accuracy
+            new Move(16, "Decay Attack", 0, 100, false, Type.Debuff), // Decrease opponent attack
+            new Move(17, "Decay Defense", 0, 100, false, Type.Debuff), // Decrease opponent defense
+            new Move(18, "Decay Accuracy", 0, 75, false, Type.Debuff), // Decrease opponent accuracy.
+            new Move(19, "Restore", 0, 100, false, Type.Heal), // Heal self by half.
         };
 
         public static Unit GenerateRandomUnit()
@@ -156,7 +161,7 @@ namespace Units
             List<int> moves = new();
             while (moves.Count < 4)
             {
-                int randomMove = rng.Next(1, 19);
+                int randomMove = rng.Next(1, 20);
                 if (!moves.Contains(randomMove)) { moves.Add(randomMove); }
             }
 
@@ -217,6 +222,10 @@ namespace Units
                 Type.Terra  => "Terra",
                 //Type.Ventus => "Ventus",
                 Type.Virus  => "Virus",
+                Type.Burn => "Burn",
+                Type.Buff => "Buff",
+                Type.Debuff => "Debuff",
+                Type.Heal => "Heal",
                 _ => "NoType"
             };
         }

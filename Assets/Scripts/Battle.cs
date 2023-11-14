@@ -37,12 +37,16 @@ namespace Battle
         // Returns true if there was a knockout. False means the battle continues. 
         public bool Round()
         {
-            if(!movesUpdatedThisRound) { throw new NotImplementedException(); } // idk lol replace with a better check
+            if (!movesUpdatedThisRound) { throw new NotImplementedException(); } // idk lol replace with a better check
             UnityEngine.Debug.Log("Round started.");
             Turn a_turn = new(ref unitWithInitiative, ref other, a_move, true, ref manager);
             Turn o_turn = new(ref other, ref unitWithInitiative, o_move, false, ref manager);
             movesUpdatedThisRound = false;
-            return a_turn.Act(this) || o_turn.Act(this); // Will short circuit return true if someone is knocked out during a_turn, instantly ending the battle.
+
+            bool ko = a_turn.Act(this);
+            if(!ko) { ko = o_turn.Act(this); }
+            manager.RunAllAnimations(); // This funky setup allows the opponent turn to go only if the player turn had no knockout. Either way, play anims.
+            return ko;
         }
 
         // Matches the moves displayed in UI positions 1, 2, 3, 4 to the index of the same move in the Unit class. 
@@ -133,7 +137,7 @@ namespace Battle
                     if (rng.Next(1, 25) == 1) { crit = 2; } // Update UI on hit to indicate a crit occurred. 
                     if (attacker.Type == move.Type) { attacker_attack_mod *= 1.25f; } // Check same-type attack bonus. 
 
-                    float damage = 20 * (random_factor / 100.0f) * crit * move.Power * // Mods galore
+                    float damage = 40 * random_factor * crit * move.Power * // Mods galore
                         TypeConverter.DamageMod(move.Type, defender.Type) * // Type matchup
                         ((attacker.Attack * attacker_attack_mod) / (defender.Defense * defender_defense_mod * 50)); // Atk/def matchup. 
 
@@ -144,8 +148,9 @@ namespace Battle
                     UnityEngine.Debug.Log($"Calculated damage: {finalDamage}");
 
                     defender.ModHitPoints(finalDamage);
-                    manager.Animation_HitUnit(move.Type, attackerHasInit); // Init is player
-                    UnityEngine.Debug.Log("Got past move timer.");
+                    manager.PrintHealth(!attackerHasInit);
+                    manager.AddHitAnimationToQueue(move.Type, !attackerHasInit); // Init is player
+                    
 
                     //
                     // End on hit logic
@@ -205,6 +210,7 @@ namespace Battle
             {
                 // Burn damage against attacker at the end of their turn. Occurs whether or not the move hit. 
                 attacker.ModHitPoints(-0.1f); // Deals 10% max hp per turn. 
+                manager.AddHitAnimationToQueue(Units.Type.Burn, attackerHasInit);
                 // Play animation for burn damage. 
             }
 
