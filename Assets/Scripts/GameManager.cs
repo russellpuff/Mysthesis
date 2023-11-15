@@ -1,15 +1,13 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Battle;
 using System;
 using System.Linq;
 using Units;
 using UnityEngine.UI;
-using System.IO;
 using UnityEditor;
 using TMPro;
-using System.Threading;
+using UnityEngine.SceneManagement;
+using System.Drawing;
 
 public class GameManager : MonoBehaviour
 {
@@ -19,13 +17,16 @@ public class GameManager : MonoBehaviour
     private GameState gameState;
     private int moveChosenByPlayer;
     private int[] movesPlayerCanSwapIn;
-    private bool roundOngoing;
+    private bool animationsArePlaying;
     private bool playerChoseANewUnit;
     private ParticleSystem p_particles;
     private ParticleSystem o_particles;
     private List<Button> allButtons;
-    // Tuple for messing with hit animations. Takes the type to switch the material to, and if it targets the player as a bool.
-    Queue<(Units.Type, bool)> hitAnimationsQueue;
+    private int knockouts;
+    // Tuple for messing with hit animations.
+    // Takes the type to switch the material to, the percentage of health remaining for the target,
+    // whether the target was the player as a bool, and a UI_InfoText string.
+    Queue<(Units.Type, float, bool, string)> hitAnimationsQueue;
     [SerializeField] Sprite[] sprites;
 
     enum GameState
@@ -41,17 +42,16 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
+        knockouts = 0;
         gameState = GameState.Initialize;
         player = Utility.GenerateRandomUnit();
-        roundOngoing = false;
-        playerChoseANewUnit = false;
+        animationsArePlaying = false;
         movesPlayerCanSwapIn = new int[3];
         hitAnimationsQueue = new();
         allButtons = new();
-        GameObject p = GameObject.Find($"MoveParticlesPlayer");
-        p_particles = p.GetComponent<ParticleSystem>();
-        GameObject o = GameObject.Find($"MoveParticlesOpponent");
-        o_particles = o.GetComponent<ParticleSystem>();
+        p_particles = GameObject.Find($"MoveParticlesPlayer").GetComponent<ParticleSystem>();
+        o_particles = GameObject.Find($"MoveParticlesOpponent").GetComponent<ParticleSystem>();
+        playerChoseANewUnit = true; // Allows the player to be initialized.
 
         Button[] buttons = FindObjectOfType<Canvas>().GetComponentsInChildren<Button>();
         foreach(Button button in buttons) 
@@ -72,10 +72,13 @@ public class GameManager : MonoBehaviour
                 battle = new(ref player, ref opponent, true);
                 battle.SetGameManager(this);
                 UI_SetVisibilityOfWinScreen(visible: false);
+                UI_SetVisibilityOfLoseScreen(visible: false);
                 UI_SetVisibilityOfPlayerMoves(visible: true);
                 UI_UpdatePlayerOrOpponent(updatePlayer: true);
                 UI_UpdatePlayerOrOpponent(updatePlayer: false);
                 UI_UpdatePlayerMoves();
+                GameObject.Find($"UI_InfoText").GetComponent<TextMeshProUGUI>().text = "";
+                playerChoseANewUnit = false;
                 AdvanceGameState();
                 break;
             case GameState.PlayerMoveSelection:
@@ -83,16 +86,22 @@ public class GameManager : MonoBehaviour
                 break;
             case GameState.OpponentMoveSelection:
                 int o_move = Opponent_ChooseMove();
-                Debug.Log($"Opponent chose a move: {opponent.Moves[o_move].Name}");
+                //Debug.Log($"Opponent chose a move: {opponent.Moves[o_move].Name}");
                 battle.UpdateMovesChosen(moveChosenByPlayer, o_move);
                 AdvanceGameState();
-                roundOngoing = true;
-                if (battle.Round()) { AdvanceGameState(GameState.KnockoutAnimation); } // When Round() returns true, someone died.
+                animationsArePlaying = true;
+                if (battle.Round()) // When Round() returns true, someone died.
+                { 
+                    AdvanceGameState(GameState.KnockoutAnimation);
+                    string who = player.CurrentHitPoints == 0 ? "Player" : "Opponent";
+                    GameObject.Find($"UI_InfoText").GetComponent<TextMeshProUGUI>().text = $"{who} was killed!";
+                } 
                 else { AdvanceGameState(GameState.PlayerMoveSelection); } // When Round() returns false, set up for a new round.
+                GameObject.Find($"UI_InfoText").GetComponent<TextMeshProUGUI>().text = "";
                 break;
             case GameState.KnockoutAnimation:
                 // Someone being knocked out animation is playing
-                if (!p_particles.isPlaying && !o_particles.isPlaying)
+                if (!animationsArePlaying)
                 {
                     string who = player.CurrentHitPoints == 0 ? "Player" : "Opponent";
                     GameObject unit_obj = GameObject.Find($"{who}Object");
@@ -100,21 +109,34 @@ public class GameManager : MonoBehaviour
                     if (unit_obj.transform.position.y < 1)
                     {
                         unit_obj.GetComponent<SpriteRenderer>().enabled = false;
-                        UI_SetVisibilityOfPlayerMoves(visible: false);
-                        UI_SetVisibilityOfWinScreen(visible: true);
-                        ChooseRandomNewMoves();
                         GameState gs = opponent.CurrentHitPoints == 0 ? GameState.PlayerSelectingNewMoveOrUnit : GameState.PlayerDied;
                         AdvanceGameState(gs);
+                        if(gs == GameState.PlayerSelectingNewMoveOrUnit)
+                        {
+                            ++knockouts;
+                            UI_SetVisibilityOfPlayerMoves(visible: false);
+                            UI_SetVisibilityOfWinScreen(visible: true);
+                            ChooseRandomNewMoves();
+                            GameObject.Find($"UI_InfoText").GetComponent<TextMeshProUGUI>().text = "Choose a new move, or get a random new unit.";
+                        } else
+                        {
+                            UI_SetVisibilityOfPlayerMoves(visible: false);
+                            UI_SetVisibilityOfLoseScreen(visible: true);
+                            string text = $"You died! Knocked out {knockouts} opponent";
+                            text += (knockouts > 1 || knockouts == 0) ? "s." : ".";
+                            GameObject.Find($"UI_InfoText").GetComponent<TextMeshProUGUI>().text = text;
+
+                        }
                     }
                 }
                 break;
             case GameState.PlayerSelectingNewMoveOrUnit:
                 // Wait for player to swap a move or unit, or neither.
-                Debug.Log("Opponent is dead");
+                //Debug.Log("Opponent is dead");
                 break;
             case GameState.PlayerDied:
                 // Player dead show lose screen.
-                Debug.Log("Player is dead");
+                //Debug.Log("Player is dead");
                 break;
         }
     }
@@ -135,29 +157,31 @@ public class GameManager : MonoBehaviour
 
     void UI_UpdatePlayerOrOpponent(bool updatePlayer) // Update player or opponent sprite when switched. True means player is being updated. 
     {
-        string who = updatePlayer ? "Player" : "Opponent";
-        Units.Type t = updatePlayer ? player.Type : opponent.Type;
-
-        GameObject unit_obj = GameObject.Find($"{who}Object");
-        System.Random r = new();
-        int idx = r.Next(1, sprites.Length);
-        unit_obj.GetComponent<SpriteRenderer>().sprite = sprites[idx];
-
-        string ic = @$"Assets/Assets/Particles/{TypeConverter.TypeToString(t).ToLower()}.png";
-        Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(ic);
-        Sprite icon = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0, 0));
-        GameObject.Find($"{who}Icon").GetComponent<Image>().sprite = icon;
-        unit_obj.GetComponent<SpriteRenderer>().enabled = true;
-        unit_obj.transform.localPosition = new(unit_obj.transform.localPosition.x, 2);
         if (!updatePlayer || playerChoseANewUnit)
         {
+            string who = updatePlayer ? "Player" : "Opponent";
+            Units.Type t = updatePlayer ? player.Type : opponent.Type;
+
+            GameObject unit_obj = GameObject.Find($"{who}Object");
+            System.Random r = new();
+            int idx = r.Next(1, sprites.Length);
+            unit_obj.GetComponent<SpriteRenderer>().sprite = sprites[idx];
+
+            string ic = @$"Assets/Assets/Particles/{TypeConverter.TypeToString(t).ToLower()}.png";
+            Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(ic);
+            Sprite icon = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0, 0));
+            GameObject.Find($"{who}Icon").GetComponent<Image>().sprite = icon;
+            unit_obj.GetComponent<SpriteRenderer>().enabled = true;
+            unit_obj.transform.localPosition = new(unit_obj.transform.localPosition.x, 2);
+
             var bar = GameObject.Find($"UI_{who}_HPBar").GetComponent<Image>();
             bar.rectTransform.localScale = new(1, bar.rectTransform.localScale.y, bar.rectTransform.localScale.z);
         }
     }
 
     void UI_SetVisibilityOfWinScreen(bool visible) 
-    {
+    { 
+        // Player knocked out opponent.
         foreach(Button b in allButtons)
         {
             if(b.gameObject.CompareTag("WinButton"))
@@ -171,6 +195,14 @@ public class GameManager : MonoBehaviour
     void UI_SetVisibilityOfLoseScreen(bool visible) 
     {
         // The player was knocked out.
+        foreach (Button b in allButtons)
+        {
+            if (b.gameObject.CompareTag("LoseButton"))
+            {
+                b.interactable = visible;
+                b.gameObject.SetActive(visible);
+            }
+        }
     }
 
     void UI_SetVisibilityOfPlayerMoves(bool visible)
@@ -192,8 +224,8 @@ public class GameManager : MonoBehaviour
         System.Random rng = new();
         while (moves.Count < 3)
         {
-            int randomMove = rng.Next(1, 20);
-            if (!moves.Contains(randomMove)) { moves.Add(randomMove); }
+            int randomMove = rng.Next(1, 21);
+            if (!moves.Contains(randomMove) && !player.Moves.Any(x => x.MoveID == randomMove) ) { moves.Add(randomMove); }
         }
         for (int i = 0; i < 3; ++i)
         {
@@ -214,7 +246,7 @@ public class GameManager : MonoBehaviour
         {
             case GameState.PlayerMoveSelection:
                 moveChosenByPlayer = button.gameObject.name[^1] - '0'; // Get index from name
-                Debug.Log($"Chose a move: {moveChosenByPlayer}");
+                //Debug.Log($"Chose a move: {moveChosenByPlayer}");
                 AdvanceGameState();
                 break;
             case GameState.PlayerSelectingNewMoveOrUnit:
@@ -227,13 +259,14 @@ public class GameManager : MonoBehaviour
                         moveChosenByPlayer = movesPlayerCanSwapIn[idx];
                         UI_SetVisibilityOfPlayerMoves(visible: true);
                         UI_SetVisibilityOfWinScreen(visible: false);
+                        GameObject.Find($"UI_InfoText").GetComponent<TextMeshProUGUI>().text = "Choose a move to replace.";
                         break;
                     case "UI_NewUnit":
                         player = Utility.GenerateRandomUnit();
                         playerChoseANewUnit = true;
                         AdvanceGameState(GameState.SceneGeneration);
                         break;
-                    case "UI_Continue":
+                    case "UI_ChooseNothing":
                         AdvanceGameState(GameState.SceneGeneration);
                         break;
                     default: // Player was selecting a new move. 
@@ -245,6 +278,7 @@ public class GameManager : MonoBehaviour
                 break;
             case GameState.PlayerDied:
                 // There's only one button, the restart button lol.
+                SceneManager.LoadScene(0);
                 break;
         }
     }
@@ -266,7 +300,7 @@ public class GameManager : MonoBehaviour
         if(opponent.CurrentHitPoints <= (opponent.MaxHitPoints / 3))
         {
             int idx = Array.FindIndex(opponent.Moves, o => o.MoveID == 19);
-            if (idx != -1) return idx;
+            if (idx != -1) { return idx; }
         }
 
         // Second priority: KILL
@@ -275,72 +309,96 @@ public class GameManager : MonoBehaviour
             if (TypeConverter.DamageMod(opponent.Moves[i].Type, player.Type) > 1) { return i; }
         }
 
-        // Third priority: inverting self attack and defense debuffs.
-        if(battle.AttackDecayFlag.Item2)
+        if(opponent.CurrentHitPoints >= (opponent.MaxHitPoints / 2) && player.CurrentHitPoints >= (player.MaxHitPoints / 2))
         {
-            int idx = Array.FindIndex(opponent.Moves, o => o.MoveID == 13);
-            if (idx != -1) return idx;
-        }
-        if (battle.DefenseDecayFlag.Item2)
-        {
-            int idx = Array.FindIndex(opponent.Moves, o => o.MoveID == 14);
-            if (idx != -1) return idx;
+            // Third priority: inverting self attack and defense debuffs. But only if both sides hp is good.
+            if (battle.AttackDecayFlag.Item2)
+            {
+                int idx = Array.FindIndex(opponent.Moves, o => o.MoveID == 13);
+                if (idx != -1) { return idx; }
+            }
+            if (battle.DefenseDecayFlag.Item2)
+            {
+                int idx = Array.FindIndex(opponent.Moves, o => o.MoveID == 14);
+                if (idx != -1) { return idx; }
+            }
         }
 
-        // Forth priority: random move
+        // Forth priority: STAB move
+        for (int i = 0; i < 4; ++i)
+        {
+            if (opponent.Moves[i].Type == opponent.Type) { return i; }
+        }
+
+        // Fifth priority: choose a random move based on usefulness. 
+        int ineffectiveMove = -1;
+        for(int i = 0; i < 4; ++i)
+        {
+            if (TypeConverter.DamageMod(opponent.Moves[i].Type, player.Type) == 0.5) { ineffectiveMove = i; break; }
+        }
+
+        List<int> bannedMoves = new(); // Try to ban moves that won't do anything useful. 
+        for(int i = 0; i < 4; ++i)
+        {
+            switch(opponent.Moves[i].MoveID)
+            {
+                case 12: if(battle.BurnFlag.Item1) { bannedMoves.Add(i); } break;
+                case 13: if (battle.AttackAmpFlag.Item2) { bannedMoves.Add(i); } break;
+                case 14: if (battle.DefenseAmpFlag.Item2) { bannedMoves.Add(i); } break;
+                case 15: if (battle.AccuracyAmpFlag.Item2) { bannedMoves.Add(i); } break;
+                case 16: if(battle.AttackDecayFlag.Item1) { bannedMoves.Add(i); } break;
+                case 17: if (battle.DefenseDecayFlag.Item1) { bannedMoves.Add(i); } break;
+                case 18: if (battle.AccuracyDecayFlag.Item1) { bannedMoves.Add(i); } break;
+                case 19: if (opponent.CurrentHitPoints == opponent.MaxHitPoints) { bannedMoves.Add(i); } break; // Restore
+            }
+        }
+        if (bannedMoves.Count == 3) { return ineffectiveMove; }
         System.Random r = new();
-        return r.Next(0, 4);
+        while (true)
+        {
+            int randMove = r.Next(0, 4);
+            if(!bannedMoves.Contains(randMove)) { return randMove; }
+        }
     }
 
-    public void AddHitAnimationToQueue(Units.Type type, bool targetIsPlayer)
+    public void AddHitAnimationToQueue(Units.Type type, float healthPercentage, bool targetIsPlayer, string uiText)
     {
-        hitAnimationsQueue.Enqueue((type, targetIsPlayer));
+        hitAnimationsQueue.Enqueue((type, healthPercentage, targetIsPlayer, uiText));
     }
 
     public void RunAllAnimations()
     {
-        for(int i = 0; i < hitAnimationsQueue.Count; ++i) { Invoke(nameof(Animation_HitUnit), i); }
+        for(int i = 0; i < hitAnimationsQueue.Count; ++i) 
+        { 
+            Invoke(nameof(Animation_HitUnit), i); 
+            if(i  == hitAnimationsQueue.Count - 1)
+            {
+                Invoke(nameof(IndicateEndOfAnimations), i + 0.5f);
+            }
+        }
     }
 
     private void Animation_HitUnit()
     {
         var item = hitAnimationsQueue.Dequeue();
-        string m = @$"Assets/Assets/Particles/Materials/{TypeConverter.TypeToString(item.Item1)}Material.mat";
-        Material material = Instantiate(AssetDatabase.LoadAssetAtPath<Material>(m));
-        ParticleSystem particles = item.Item2 ? p_particles : o_particles;
-        particles.GetComponent<Renderer>().material = material;
-        particles.Play();
-        AlterHealthBar(item.Item2);
+        if(item.Item1 != Units.Type.NoType)
+        {
+            string m = @$"Assets/Assets/Particles/Materials/{TypeConverter.TypeToString(item.Item1)}Material.mat";
+            Material material = Instantiate(AssetDatabase.LoadAssetAtPath<Material>(m));
+            ParticleSystem particles = item.Item3 ? p_particles : o_particles;
+            particles.GetComponent<Renderer>().material = material;
+            particles.Play();
+            // Alter health bar
+            string who = item.Item3 ? "Player" : "Opponent";
+            var bar = GameObject.Find($"UI_{who}_HPBar").GetComponent<Image>();
+            bar.rectTransform.localScale = new(item.Item2, bar.rectTransform.localScale.y, bar.rectTransform.localScale.z);
+        }
+        GameObject.Find($"UI_InfoText").GetComponent<TextMeshProUGUI>().text = item.Item4;
     }
 
-    public void Animation_Buff(bool targetIsPlayer) 
-    { 
-        AddHitAnimationToQueue(Units.Type.Buff, targetIsPlayer);
-    }
-
-    public void Animation_Debuff(bool targetIsPlayer)
+    private void IndicateEndOfAnimations()
     {
-        AddHitAnimationToQueue(Units.Type.Debuff, targetIsPlayer);
-    }
-
-    public void Animation_Burn(bool targetIsPlayer)
-    {
-        AddHitAnimationToQueue(Units.Type.Burn, targetIsPlayer);
-    }
-
-    public void Animation_Restore(bool targetIsPlayer)
-    {
-        AddHitAnimationToQueue(Units.Type.Heal, targetIsPlayer);
-    }
-
-    private void AlterHealthBar(bool isPlayer)
-    {
-        string who = isPlayer ? "Player" : "Opponent";
-        var bar = GameObject.Find($"UI_{who}_HPBar").GetComponent<Image>();
-        int currentHP = isPlayer ? player.CurrentHitPoints : opponent.CurrentHitPoints;
-        int maxHP = isPlayer ? player.MaxHitPoints : opponent.MaxHitPoints;
-        float percent = (float)currentHP / (float)maxHP;
-        bar.rectTransform.localScale = new(percent, bar.rectTransform.localScale.y, bar.rectTransform.localScale.z);
+        animationsArePlaying = false;
     }
 
     public void PrintHealth(bool isPlayer)

@@ -52,7 +52,11 @@ namespace Battle
         // Matches the moves displayed in UI positions 1, 2, 3, 4 to the index of the same move in the Unit class. 
         public void UpdateMovesChosen(int p_move, int e_move)
         {
-            if(playerHasInit)
+            // These should not be possible, but there seems to be a phantom bug where e_move is -1. Can't determine source. 
+            if(p_move > 3 || p_move < 0) { p_move = 0; }
+            if(e_move > 3 || e_move < 0) { e_move = 0; }
+
+            if (playerHasInit)
             {
                 a_move = unitWithInitiative.Moves[p_move];
                 o_move = other.Moves[e_move]; // Opponent moves are selected by their real index programmatically. 
@@ -92,11 +96,11 @@ namespace Battle
         // True means there was a knockout. False means the battle continues. 
         public bool Act(Battle battle)
         {
-            // Trigger animation for attack. 
             float attacker_attack_mod = 1.0f;
             float defender_defense_mod = 1.0f;
             float attacker_accuracy_mod = 1.0f;
             System.Random rng = new();
+            string who = attackerHasInit ? "Player" : "Opponent";
 
             //
             // Roll to hit logic
@@ -149,7 +153,9 @@ namespace Battle
 
                     defender.ModHitPoints(finalDamage);
                     manager.PrintHealth(!attackerHasInit);
-                    manager.AddHitAnimationToQueue(move.Type, !attackerHasInit); // Init is player
+                    float remainingHP = (float)defender.CurrentHitPoints / (float)defender.MaxHitPoints;
+                    string ui_info = $"{who} used {move.Name} and hit for {finalDamage * -1} damage.";
+                    manager.AddHitAnimationToQueue(move.Type, remainingHP, !attackerHasInit, ui_info); // Init is player
                     
 
                     //
@@ -158,59 +164,114 @@ namespace Battle
                 }
                 else // Status move.
                 {
-                    switch(move.MoveID) // Abstract this if any complex moves are created. 
+                    float attackerHP = (float)attacker.CurrentHitPoints / (float)attacker.MaxHitPoints;
+                    float defenderHP = (float)defender.CurrentHitPoints / (float)defender.MaxHitPoints;
+                    string ui_info = $"{who} used {move.Name}.";
+                    // Buffs check to see if the opposing decay exists, and vice versa. 
+                    // If so, just erase it. Otherwise add the flag. 
+                    switch (move.MoveID) // Abstract this if any complex moves are created. 
                     {
                         case 12: // Burn
                             battle.BurnFlag = attackerHasInit ? 
                                 (battle.BurnFlag.Item1, true) : (true, battle.BurnFlag.Item2);
-                            manager.Animation_Burn(!attackerHasInit);
+                            manager.AddHitAnimationToQueue(Units.Type.Burn, defenderHP, !attackerHasInit, ui_info);
                             break;
                         case 13: // Amp Attack
-                            battle.AttackAmpFlag = attackerHasInit ? 
-                                (true, battle.AttackAmpFlag.Item2) : (battle.AttackAmpFlag.Item1, true);
-                            manager.Animation_Buff(attackerHasInit);
+                            if(attackerHasInit ? battle.AttackDecayFlag.Item1 : battle.AttackDecayFlag.Item2)
+                            {
+                                battle.AttackDecayFlag = attackerHasInit ? 
+                                    (false, battle.AttackDecayFlag.Item2) : (battle.AttackDecayFlag.Item1, false);
+                            } else
+                            {
+                                battle.AttackAmpFlag = attackerHasInit ?
+                                    (true, battle.AttackAmpFlag.Item2) : (battle.AttackAmpFlag.Item1, true);
+                            }
+                            manager.AddHitAnimationToQueue(Units.Type.Buff, attackerHP, attackerHasInit, ui_info);
                             break;
                         case 14: // Amp Defense
-                            battle.DefenseAmpFlag = attackerHasInit ? 
-                                (true, battle.DefenseAmpFlag.Item2) : (battle.DefenseAmpFlag.Item1, true);
-                            manager.Animation_Buff(attackerHasInit);
+                            if (attackerHasInit ? battle.DefenseDecayFlag.Item1 : battle.DefenseDecayFlag.Item2)
+                            {
+                                battle.DefenseDecayFlag = attackerHasInit ?
+                                    (false, battle.DefenseDecayFlag.Item2) : (battle.DefenseDecayFlag.Item1, false);
+                            }
+                            else
+                            {
+                                battle.DefenseAmpFlag = attackerHasInit ?
+                                    (true, battle.DefenseAmpFlag.Item2) : (battle.DefenseAmpFlag.Item1, true);
+                            }
+                            manager.AddHitAnimationToQueue(Units.Type.Buff, attackerHP, attackerHasInit, ui_info);
                             break;
                         case 15: // Amp Accuracy
-                            battle.AccuracyAmpFlag = attackerHasInit ? 
-                                (true, battle.AccuracyAmpFlag.Item2) : (battle.AccuracyAmpFlag.Item1, true);
-                            manager.Animation_Buff(attackerHasInit);
+                            if (attackerHasInit ? battle.AccuracyDecayFlag.Item1 : battle.AccuracyDecayFlag.Item2)
+                            {
+                                battle.AccuracyDecayFlag = attackerHasInit ?
+                                    (false, battle.AccuracyDecayFlag.Item2) : (battle.AccuracyDecayFlag.Item1, false);
+                            }
+                            else
+                            {
+                                battle.AccuracyAmpFlag = attackerHasInit ?
+                                    (true, battle.AccuracyAmpFlag.Item2) : (battle.AccuracyAmpFlag.Item1, true);
+                            }
+                            manager.AddHitAnimationToQueue(Units.Type.Buff, attackerHP, attackerHasInit, ui_info);
                             break;
                         case 16: // Decay Attack 
-                            battle.AttackDecayFlag = attackerHasInit ? 
-                                (battle.AttackDecayFlag.Item1, true) : (true, battle.AttackDecayFlag.Item2);
-                            manager.Animation_Debuff(!attackerHasInit);
+                            if(attackerHasInit ? battle.AttackAmpFlag.Item2 : battle.AttackAmpFlag.Item1)
+                            {
+                                battle.AttackAmpFlag = attackerHasInit ?
+                                    (battle.AttackAmpFlag.Item1, false) : (false, battle.AttackAmpFlag.Item2);
+                            } else
+                            {
+                                battle.AttackDecayFlag = attackerHasInit ?
+                                    (battle.AttackDecayFlag.Item1, true) : (true, battle.AttackDecayFlag.Item2);
+                            }
+                            manager.AddHitAnimationToQueue(Units.Type.Debuff, defenderHP, !attackerHasInit, ui_info);
                             break;
                         case 17: // Decay Defense
-                            battle.DefenseDecayFlag = attackerHasInit ? 
-                                (battle.DefenseDecayFlag.Item1, true) : (true, battle.DefenseDecayFlag.Item2);
-                            manager.Animation_Debuff(!attackerHasInit);
+                            if (attackerHasInit ? battle.DefenseAmpFlag.Item2 : battle.DefenseAmpFlag.Item1)
+                            {
+                                battle.DefenseAmpFlag = attackerHasInit ?
+                                    (battle.DefenseAmpFlag.Item1, false) : (false, battle.DefenseAmpFlag.Item2);
+                            }
+                            else
+                            {
+                                battle.DefenseDecayFlag = attackerHasInit ?
+                                    (battle.DefenseDecayFlag.Item1, true) : (true, battle.DefenseDecayFlag.Item2);
+                            }
+                            manager.AddHitAnimationToQueue(Units.Type.Debuff, defenderHP, !attackerHasInit, ui_info);
                             break;
                         case 18: // Decay Accuracy
-                            battle.AccuracyDecayFlag = attackerHasInit ? 
-                                (battle.AccuracyDecayFlag.Item1, true) : (true, battle.AccuracyDecayFlag.Item2);
-                            manager.Animation_Debuff(!attackerHasInit);
+                            if (attackerHasInit ? battle.AccuracyAmpFlag.Item2 : battle.AccuracyAmpFlag.Item1)
+                            {
+                                battle.AccuracyAmpFlag = attackerHasInit ?
+                                    (battle.AccuracyAmpFlag.Item1, false) : (false, battle.AccuracyAmpFlag.Item2);
+                            }
+                            else
+                            {
+                                battle.AccuracyDecayFlag = attackerHasInit ?
+                                    (battle.AccuracyDecayFlag.Item1, true) : (true, battle.AccuracyDecayFlag.Item2);
+                            }
+                            manager.AddHitAnimationToQueue(Units.Type.Debuff, defenderHP, !attackerHasInit, ui_info);
                             break;
                         case 19: // Restore
                             attacker.ModHitPoints(0.5f); // Restores 50% hp
-                            manager.Animation_Restore(attackerHasInit);
+                            attackerHP = (float)attacker.CurrentHitPoints / (float)attacker.MaxHitPoints;
+                            manager.AddHitAnimationToQueue(Units.Type.Heal, attackerHP, attackerHasInit, ui_info);
                             break;
                     }
                 }
             } else
             {
-                // Play miss animation, update UI to indicate move missed. Pass turn. 
+                string ui_info = $"{who} used {move.Name} but missed!";
+                manager.AddHitAnimationToQueue(Units.Type.NoType, 0, true, ui_info);
             }
 
             if (attackerHasInit ? battle.BurnFlag.Item1 : battle.BurnFlag.Item2)
             {
                 // Burn damage against attacker at the end of their turn. Occurs whether or not the move hit. 
                 attacker.ModHitPoints(-0.1f); // Deals 10% max hp per turn. 
-                manager.AddHitAnimationToQueue(Units.Type.Burn, attackerHasInit);
+                float remainingHP = (float)attacker.CurrentHitPoints / (float)attacker.MaxHitPoints;
+                string ui_info = $"{who} took damage from their burn.";
+                manager.AddHitAnimationToQueue(Units.Type.Burn, remainingHP, attackerHasInit, ui_info);
                 // Play animation for burn damage. 
             }
 

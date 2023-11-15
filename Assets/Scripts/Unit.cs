@@ -114,7 +114,7 @@ namespace Units
         Mortis,
         Sonus,
         Terra,
-        // Ventus,
+        Ventus,
         Virus,
         Buff,
         Debuff,
@@ -137,7 +137,7 @@ namespace Units
             new Move(8, "Grave Killer", 75, 100, true, Type.Mortis),
             new Move(9, "Death Toll", 75, 100, true, Type.Sonus),
             new Move(10, "Earthquake", 75, 100, true, Type.Terra),
-            //new Move(11, "Hurricane", 75, 100, true, Type.Ventus),
+            new Move(20, "Hurricane", 75, 100, true, Type.Ventus),
             new Move(11, "Toxic Bomb", 75, 100, true, Type.Virus),
 
             // Basic status moves.  
@@ -161,7 +161,7 @@ namespace Units
             List<int> moves = new();
             while (moves.Count < 4)
             {
-                int randomMove = rng.Next(1, 20);
+                int randomMove = rng.Next(1, 21);
                 if (!moves.Contains(randomMove)) { moves.Add(randomMove); }
             }
 
@@ -220,7 +220,7 @@ namespace Units
                 Type.Mortis => "Mortis",
                 Type.Sonus  => "Sonus",
                 Type.Terra  => "Terra",
-                //Type.Ventus => "Ventus",
+                Type.Ventus => "Ventus",
                 Type.Virus  => "Virus",
                 Type.Burn => "Burn",
                 Type.Buff => "Buff",
@@ -244,7 +244,7 @@ namespace Units
                 "Mortis" => Type.Mortis,
                 "Sonus" => Type.Sonus,
                 "Terra" => Type.Terra,
-                //"Ventus" => Type.Ventus,
+                "Ventus" => Type.Ventus,
                 "Virus" => Type.Virus,
                 _ => Type.NoType
             };
