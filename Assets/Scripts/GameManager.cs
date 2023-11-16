@@ -141,6 +141,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // UI stuff
     void UI_UpdatePlayerMoves() // Update moves when player switches a move or unit.
     {
         Button[] buttons = allButtons.Where(x => x.gameObject.name.Contains("UI_Move")).ToArray();
@@ -217,6 +218,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // Method for generating random new moves after successfully knocking out an opponent. 
     void ChooseRandomNewMoves()
     {
         Button[] buttons = allButtons.Where(x => x.gameObject.name.Contains("NewMove")).ToArray();
@@ -240,14 +242,18 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // Button click stuff. 
     void Event_ButtonClicked(Button button)
     {
         switch(gameState)
         {
             case GameState.PlayerMoveSelection:
-                moveChosenByPlayer = button.gameObject.name[^1] - '0'; // Get index from name
-                //Debug.Log($"Chose a move: {moveChosenByPlayer}");
-                AdvanceGameState();
+                if(!animationsArePlaying)
+                {
+                    moveChosenByPlayer = button.gameObject.name[^1] - '0'; // Get index from name
+                    //Debug.Log($"Chose a move: {moveChosenByPlayer}");
+                    AdvanceGameState();
+                }
                 break;
             case GameState.PlayerSelectingNewMoveOrUnit:
                 switch(button.gameObject.name)
@@ -283,17 +289,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    void AdvanceGameState() // Advance to next.
-    {
-        if(gameState == GameState.PlayerDied) { gameState = GameState.SceneGeneration; }
-        else { ++gameState; }
-    }
-
-    void AdvanceGameState(GameState gs) // Advance to specific. 
-    {
-        this.gameState = gs;
-    }
-
+    // Opponent picking a move during combat phase. 
     int Opponent_ChooseMove()
     {
         // First priority: healing if opponent has Restore.
@@ -361,6 +357,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // Animation stuff.
     public void AddHitAnimationToQueue(Units.Type type, float healthPercentage, bool targetIsPlayer, string uiText)
     {
         hitAnimationsQueue.Enqueue((type, healthPercentage, targetIsPlayer, uiText));
@@ -399,6 +396,18 @@ public class GameManager : MonoBehaviour
     private void IndicateEndOfAnimations()
     {
         animationsArePlaying = false;
+    }
+
+    // Tools
+    void AdvanceGameState() // Advance to next.
+    {
+        if (gameState == GameState.PlayerDied) { gameState = GameState.SceneGeneration; }
+        else { ++gameState; }
+    }
+
+    void AdvanceGameState(GameState gs) // Advance to specific. 
+    {
+        this.gameState = gs;
     }
 
     public void PrintHealth(bool isPlayer)
